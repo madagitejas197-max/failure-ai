@@ -1,0 +1,138 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  # ── Backend: Lint + Test ─────────────────────────────────────────────────
+  backend-lint-test:
+    name: Backend — Lint & Test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER:     failureai
+          POSTGRES_PASSWORD: failureai
+          POSTGRES_DB:       failureai_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U failureai"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      DATABASE_URL:    postgresql+asyncpg://failureai:failureai@localhost:5432/failureai_test
+      SECRET_KEY:      ci-test-secret-key-not-for-production
+      ENVIRONMENT:     development
+      CHROMA_HOST:     localhost
+      REDIS_URL:       redis://localhost:6379/0
+      LLM_PROVIDER:    ollama
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Lint with ruff
+        run: ruff check app/ tests/
+
+      - name: Run Alembic migrations
+        run: alembic upgrade head
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short --cov=app --cov-report=term-missing
+
+  # ── Frontend: Lint + Build ───────────────────────────────────────────────
+  frontend-lint-build:
+    name: Frontend — Lint & Build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint with ESLint
+        run: npm run lint
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Build production bundle
+        run: npm run build
+        env:
+          VITE_API_URL: /api/v1
+
+  # ── Docker Compose Smoke Test ────────────────────────────────────────────
+  docker-smoke-test:
+    name: Docker — Compose Smoke Test
+    runs-on: ubuntu-latest
+    needs: [backend-lint-test, frontend-lint-build]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy env file
+        run: cp .env.example .env
+
+      - name: Build images
+        run: docker compose build
+
+      - name: Start stack (production compose, no override)
+        run: docker compose -f docker-compose.yml up -d
+
+      - name: Wait for backend health
+        run: |
+          echo "Waiting for backend..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8000/api/v1/health; then
+              echo "Backend is healthy!"
+              exit 0
+            fi
+            echo "Attempt $i/30 — retrying in 5s..."
+            sleep 5
+          done
+          echo "Backend did not become healthy in time"
+          docker compose logs backend
+          exit 1
+
+      - name: Verify health response
+        run: |
+          STATUS=$(curl -s http://localhost:8000/api/v1/health | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['status'])")
+          echo "Health status: $STATUS"
+          [ "$STATUS" = "ok" ] || exit 1
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.yml down -v

@@ -1,0 +1,127 @@
+# FailureAI — Docker Compose (Production-like local stack)
+# For dev hot-reload overrides, see docker-compose.override.yml
+#
+# Usage:
+#   cp .env.example .env
+#   docker compose up --build
+
+version: '3.9'
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: failureai-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-failureai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-failureai}
+      POSTGRES_DB:       ${POSTGRES_DB:-failureai}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-failureai} -d ${POSTGRES_DB:-failureai}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - failureai-net
+
+  # ── ChromaDB ────────────────────────────────────────────────────────────────
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: failureai-chromadb
+    restart: unless-stopped
+    volumes:
+      - chroma_data:/chroma/chroma
+    ports:
+      - "8001:8000"     # exposed on 8001 to avoid collision with backend
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/v1/heartbeat || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - failureai-net
+
+  # ── Redis ────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: failureai-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - failureai-net
+
+  # ── Backend (FastAPI) ────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: failureai-backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Override host-facing hostnames with Docker service names
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-failureai}:${POSTGRES_PASSWORD:-failureai}@postgres:5432/${POSTGRES_DB:-failureai}
+      CHROMA_HOST:  chromadb
+      CHROMA_PORT:  8000
+      REDIS_URL:    redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+    networks:
+      - failureai-net
+    # Run migrations then start server
+    command: >
+      sh -c "
+        alembic upgrade head &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8000
+      "
+
+  # ── Frontend (React/nginx) ────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: failureai-frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: /api/v1
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - failureai-net
+
+# ── Volumes ──────────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+  chroma_data:
+  redis_data:
+
+# ── Networks ─────────────────────────────────────────────────────────────────
+networks:
+  failureai-net:
+    driver: bridge

@@ -1,0 +1,38 @@
+# docker-compose.override.yml
+# Dev overrides: hot-reload for backend and frontend.
+# Automatically merged with docker-compose.yml by Docker Compose.
+# Do NOT commit secrets to this file.
+
+version: '3.9'
+
+services:
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: runtime     # use the runtime stage (not builder)
+    volumes:
+      # Mount source for hot-reload
+      - ./backend:/app
+    environment:
+      DEBUG: "true"
+    command: >
+      sh -c "
+        alembic upgrade head &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      "
+
+  frontend:
+    # Override to use Vite dev server instead of nginx
+    build: ~           # skip built image
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules    # anonymous volume prevents overwriting node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_API_URL: http://localhost:8000/api/v1
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 3000"
