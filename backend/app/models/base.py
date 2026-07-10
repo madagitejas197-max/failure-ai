@@ -39,3 +39,15 @@ class ModelBase(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        if "id" not in kwargs:
+            self.id = uuid.uuid4()
+        if "created_at" not in kwargs:
+            self.created_at = datetime.utcnow()
+        if "updated_at" not in kwargs:
+            self.updated_at = datetime.utcnow()
+        if hasattr(self, "upvote_count") and getattr(self, "upvote_count") is None:
+            self.upvote_count = 0
+

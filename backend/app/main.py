@@ -14,7 +14,7 @@ from sqlalchemy import text
 
 from app.config import get_settings
 from app.database import engine
-from app.routers import health
+from app.routers import health, auth, users, projects, failures
 
 settings = get_settings()
 
@@ -64,3 +64,7 @@ app.add_middleware(
 
 # ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(health.router, prefix="/api/v1", tags=["Health"])
+app.include_router(auth.router, prefix="/api/v1", tags=["Auth"])
+app.include_router(users.router, prefix="/api/v1", tags=["Users"])
+app.include_router(projects.router, prefix="/api/v1", tags=["Projects"])
+app.include_router(failures.router, prefix="/api/v1", tags=["Failures"])

@@ -1,13 +1,15 @@
 import { Outlet, NavLink, Link } from 'react-router-dom'
-
-const navLinks = [
-  { to: '/',         label: 'Home' },
-  { to: '/failures', label: 'Failures' },
-  { to: '/search',   label: 'Search' },
-  { to: '/dashboard',label: 'Dashboard' },
-]
+import { useAuth } from '../context/AuthContext'
 
 export default function Layout() {
+  const { user, isAuthenticated, logout } = useAuth()
+
+  const navLinks = [
+    { to: '/',         label: 'Home' },
+    { to: '/failures', label: 'Failures' },
+    ...(isAuthenticated ? [{ to: '/projects', label: 'Projects' }] : []),
+  ]
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* ── Navbar ──────────────────────────────────────────────────── */}
@@ -45,14 +47,42 @@ export default function Layout() {
             ))}
           </ul>
 
-          {/* Auth buttons */}
+          {/* Auth states */}
           <div className="flex items-center gap-3">
-            <Link to="/login" className="btn-ghost text-sm">
-              Sign in
-            </Link>
-            <Link to="/register" className="btn-primary text-sm">
-              Get Started
-            </Link>
+            {isAuthenticated && user ? (
+              <div className="flex items-center gap-4">
+                <Link
+                  to="/profile"
+                  className="flex items-center gap-2.5 hover:text-brand-300 transition-colors group"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-brand-700 flex items-center justify-center text-white text-sm font-bold border border-white/10 overflow-hidden">
+                    {user.avatar_url ? (
+                      <img src={user.avatar_url} alt={user.display_name} className="w-full h-full object-cover" />
+                    ) : (
+                      user.display_name[0]?.toUpperCase()
+                    )}
+                  </div>
+                  <span className="text-sm font-semibold text-gray-300 group-hover:text-brand-300">
+                    {user.display_name}
+                  </span>
+                </Link>
+                <button
+                  onClick={logout}
+                  className="btn-ghost text-sm text-gray-400 hover:text-red-400 transition-colors"
+                >
+                  Sign Out
+                </button>
+              </div>
+            ) : (
+              <>
+                <Link to="/login" className="btn-ghost text-sm">
+                  Sign in
+                </Link>
+                <Link to="/register" className="btn-primary text-sm">
+                  Get Started
+                </Link>
+              </>
+            )}
           </div>
         </nav>
       </header>

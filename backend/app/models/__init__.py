@@ -1,3 +1,29 @@
-# backend/app/models/__init__.py
-# Import all models here so Alembic can discover them for autogenerate.
-# Week 1: empty — models will be added in Week 2.
+from app.models.models import (
+    User,
+    Project,
+    Failure,
+    Comment,
+    Tag,
+    AuditLog,
+    UserRole,
+    ProjectVisibility,
+    FailureCategory,
+    FailureSeverity,
+    FailureStatus,
+    failure_tags,
+)
+
+__all__ = [
+    "User",
+    "Project",
+    "Failure",
+    "Comment",
+    "Tag",
+    "AuditLog",
+    "UserRole",
+    "ProjectVisibility",
+    "FailureCategory",
+    "FailureSeverity",
+    "FailureStatus",
+    "failure_tags",
+]
