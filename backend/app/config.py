@@ -29,6 +29,16 @@ class Settings(BaseSettings):
         "postgresql+asyncpg://failureai:failureai@localhost:5432/failureai"
     )
 
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def parse_database_url(cls, v: object) -> str:
+        url = str(v)
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+        elif url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return url
+
     # ── ChromaDB ─────────────────────────────────────────────
     chroma_host: str = "localhost"
     chroma_port: int = 8000
