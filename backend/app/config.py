@@ -47,14 +47,21 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 30
 
     # ── CORS ─────────────────────────────────────────────────
-    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
+    # Stored as plain str to avoid pydantic-settings v2 JSON-parsing list[str]
+    # Use cors_origins_list property to get parsed list.
+    cors_origins: str = "http://localhost:3000,http://localhost:5173"
 
     @field_validator("cors_origins", mode="before")
     @classmethod
-    def parse_cors_origins(cls, v: str | list[str]) -> list[str]:
-        if isinstance(v, str):
-            return [origin.strip() for origin in v.split(",") if origin.strip()]
-        return v
+    def parse_cors_origins(cls, v: object) -> str:
+        if isinstance(v, list):
+            return ",".join(str(o) for o in v)
+        return str(v)
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        """Return CORS origins as a list for use in CORS middleware."""
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
     @property
     def is_production(self) -> bool:

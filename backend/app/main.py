@@ -23,18 +23,20 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Run startup checks then yield control to FastAPI."""
-    # Verify database connection on startup
+    # Verify database connection on startup (non-fatal — app still starts)
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
-        print("✅ Database connection OK")
+        print("[OK] Database connection verified")
     except Exception as exc:
-        print(f"⚠️  Database not reachable on startup: {exc}")
-        print("   The app will start but DB-dependent endpoints will fail.")
+        # DB not running locally is expected in Week 1 without Docker.
+        # Health endpoint works fine without DB.
+        print(f"[WARN] Database not reachable on startup: {exc}")
+        print("[INFO] App will start. DB-dependent endpoints will fail until Postgres is running.")
     yield
     # Teardown: dispose connection pool
     await engine.dispose()
-    print("🛑 Database connection pool closed")
+    print("[STOP] Database connection pool closed")
 
 
 # ── Application ───────────────────────────────────────────────────────────────
@@ -54,7 +56,7 @@ app = FastAPI(
 # ── Middleware ────────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
